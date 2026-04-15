@@ -15,27 +15,9 @@ logger = logging.getLogger(__name__)
 
 
 class PodpingWatcher:
-    """
-    Watch for podcast update notifications on the Hive blockchain.
-
-    Simple usage:
-        watcher = PodpingWatcher()
-
-        @watcher.on_update
-        async def handle_update(update):
-            for url in update.urls:
-                print(f"Updated: {url}")
-
-        await watcher.start()
-    """
+    """Watch for podcast update notifications on the Hive blockchain."""
 
     def __init__(self, nodes: Optional[List[str]] = None) -> None:
-        """
-        Create a new PodPing watcher.
-
-        Args:
-            nodes: List of Hive API nodes (uses defaults if not provided)
-        """
         self.nodes = nodes
         self.running = False
         self.total_updates = 0
@@ -43,18 +25,7 @@ class PodpingWatcher:
         self._operation_regex = re.compile(r"^pp_(.*)_(.*)|podping$")
 
     def on_update(self, callback: Callable) -> Callable:
-        """
-        Decorator to set the callback for podcast updates.
-
-        Callback receives a PodpingData object with URLs and metadata.
-
-        Example:
-            @watcher.on_update
-            async def handle(podping_data):
-                print(f"{podping_data.account} posted at {podping_data.timestamp}")
-                for url in podping_data.urls:
-                    print(f"  {url}")
-        """
+        """Decorator to register a callback that receives :class:`PodpingData`."""
         self._callback = callback
         return callback
 

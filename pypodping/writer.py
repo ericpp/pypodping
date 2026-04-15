@@ -2,7 +2,6 @@
 
 import json
 import logging
-import os
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional, Union
@@ -17,17 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class PodpingWriter:
-    """
-    Send podcast update notifications to the Hive blockchain.
-
-    Simple usage:
-        writer = PodpingWriter(account="your-account", posting_key="your-key")
-        await writer.post("https://example.com/feed.xml")
-
-        # Check remaining credits
-        credits = await writer.get_credits()
-        print(f"Credits: {credits}%")
-    """
+    """Send podcast update notifications to the Hive blockchain."""
 
     def __init__(
         self,
@@ -36,25 +25,11 @@ class PodpingWriter:
         nodes: Optional[List[str]] = None,
         dry_run: bool = False,
     ):
-        """
-        Create a new PodPing writer.
-
-        Args:
-            account: Hive account name (required)
-            posting_key: Hive posting key (required)
-            nodes: List of Hive API nodes (uses defaults if not provided)
-            dry_run: If True, don't actually send to blockchain (for testing)
-        """
         self.account = account
-        self.posting_key = posting_key
-        self.nodes = nodes
         self.dry_run = dry_run
         self.session_id = uuid.uuid4().int & ((1 << 64) - 1)
-
         self._hive_writer = HiveWriter(
-            account=self.account,
-            posting_key=self.posting_key,
-            nodes=self.nodes,
+            account=account, posting_key=posting_key, nodes=nodes
         )
 
     async def post(
@@ -63,42 +38,11 @@ class PodpingWriter:
         reason: str = "update",
         medium: str = "podcast",
     ) -> dict:
+        """Post update notification for one or more feed URLs.
+
+        Returns ``{"tx_id": "...", "block_num": 12345}``.
         """
-        Post podcast update notification(s).
-
-        Args:
-            urls: Single URL or list of URLs that were updated
-            reason: Why the notification is being sent. Options:
-                   - "update" (default): Regular content update
-                   - "live": Podcast going live
-                   - "liveEnd": Live podcast ending
-            medium: Type of content. Options:
-                   - "podcast" (default): Audio podcast
-                   - "music": Music content
-                   - "video": Video content
-                   - "film": Film content
-                   - "audiobook": Audiobook content
-                   - "newsletter": Newsletter content
-                   - "blog": Blog content
-
-        Returns:
-            dict with transaction details: {"tx_id": "...", "block_num": 12345}
-
-        Example:
-            # Single URL
-            result = await writer.post("https://example.com/feed.xml")
-
-            # Multiple URLs
-            result = await writer.post([
-                "https://example.com/feed1.xml",
-                "https://example.com/feed2.xml",
-            ])
-
-            # Going live
-            result = await writer.post("https://example.com/feed.xml", reason="live")
-        """
-        # Validate and normalize URLs
-        url_list = [urls] if isinstance(urls, str) else urls
+        url_list = [urls] if isinstance(urls, str) else list(urls)
         for url in url_list:
             if not rfc3987.match(url, "IRI"):
                 raise PodpingValidationError(f"Invalid URL: {url}")
@@ -144,18 +88,5 @@ class PodpingWriter:
             raise PodpingError(f"Failed to post notification: {e}") from e
 
     async def get_credits(self) -> float:
-        """
-        Get remaining Resource Credits (RC) as a percentage.
-
-        Resource Credits are consumed when posting notifications and regenerate over time.
-        You need credits to post notifications.
-
-        Returns:
-            Percentage from 0.0 to 100.0
-
-        Example:
-            credits = await writer.get_credits()
-            if credits < 10:
-                print("Warning: Running low on credits!")
-        """
+        """Return remaining Resource Credits as a percentage (0.0–100.0)."""
         return await self._hive_writer.get_account_rc()

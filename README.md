@@ -10,6 +10,18 @@ Based on [podping-hivewatcher](https://github.com/Podcastindex-org/podping-hivew
 pip install pypodping
 ```
 
+## Getting Hive Credentials
+
+You'll need Hive Credentials if you want to write podpings to Hive. The simplest way to get Hive Credentials is to sign up for InLeo.io:
+
+1. Go to the InLeo signup page: https://inleo.io/signup
+2. Click the "Sign up with Keystore" option
+3. Select "Create new keystore wallet", enter a username and password, and click "Generate Keys"
+4. Copy Hive Account Keys - these are your Hive public and private keys so store them safely!
+5. Download Keystore File and store safely
+6. Click Next and wait for your account to be confirmed on the Hive blockchain
+7. Copy your private posting key from Hive Account Keys and use it to post podpings
+
 ## Watching for Updates
 
 ```python
@@ -51,11 +63,6 @@ async def main():
 asyncio.run(main())
 ```
 
-## Getting Hive Credentials
-
-1. Create a free Hive account at https://signup.hive.io
-2. Your posting key can be found in your wallet settings
-3. Never share your posting key publicly
 
 ## API Reference
 

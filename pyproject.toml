@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pypodping"
-version = "1.0.0"
+version = "1.0.1"
 description = "Simple library for podcast update notifications via Hive blockchain"
 readme = "README.md"
 requires-python = ">=3.8"

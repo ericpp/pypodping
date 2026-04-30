@@ -44,7 +44,7 @@ class PodpingWriter:
         """
         url_list = [urls] if isinstance(urls, str) else list(urls)
         for url in url_list:
-            if not rfc3987.match(url, "IRI"):
+            if not rfc3987.match(url.replace(" ", "%20"), "IRI"):
                 raise PodpingValidationError(f"Invalid URL: {url}")
 
         if self.dry_run:

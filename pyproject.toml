@@ -52,3 +52,6 @@ python_version = "3.8"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+
+[tool.uv.sources]
+lighthive = { git = "https://github.com/ericpp/lighthive.git" }

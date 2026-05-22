@@ -119,7 +119,6 @@ class HiveWriter:
             nodes=self.nodes,
             connect_timeout=10.0,
             read_timeout=30.0,
-            automatic_node_selection=True,
         )
 
     async def _run(self, fn, *args):

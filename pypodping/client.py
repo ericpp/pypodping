@@ -114,7 +114,13 @@ class HiveWriter:
     def __init__(self, account: str, posting_key: str, nodes: Optional[List[str]] = None):
         self.account = account
         self.nodes = nodes or HIVE_NODES.copy()
-        self._client = Client(keys=[posting_key], nodes=self.nodes, connect_timeout=10.0, read_timeout=30.0)
+        self._client = Client(
+            keys=[posting_key],
+            nodes=self.nodes,
+            connect_timeout=10.0,
+            read_timeout=30.0,
+            automatic_node_selection=True,
+        )
 
     async def _run(self, fn, *args):
         return await asyncio.get_running_loop().run_in_executor(None, fn, *args)

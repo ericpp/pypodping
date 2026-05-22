@@ -7,6 +7,7 @@ from typing import List, Optional
 import aiohttp
 from lighthive.client import Client
 from lighthive.datastructures import Operation
+from lighthive.exceptions import RPCNodeException
 from lighthive.helpers.account import Account
 
 from .errors import PodpingConnectionError, PodpingNetworkError
@@ -29,16 +30,39 @@ HIVE_NODES = [
     "https://hive-api.3speak.tv",
     "https://hiveapi.actifit.io",
 ]
-"""Default Hive API nodes used when none are provided."""
+
+
+def _format_rpc_error(error) -> str:
+    """Build a readable message from an RPC error (dict or RPCNodeException)."""
+    if isinstance(error, RPCNodeException):
+        msg = str(error)
+        code = error.code
+        raw_data = (error.raw_body or {}).get("error", {}).get("data") if isinstance(error.raw_body, dict) else None
+    elif isinstance(error, dict):
+        msg = error.get("message", "Unknown RPC error")
+        code = error.get("code")
+        raw_data = error.get("data")
+    else:
+        return str(error)
+
+    if code is not None:
+        msg = f"{msg} (code {code})"
+
+    if raw_data:
+        detail = ": ".join(filter(None, [raw_data.get("name"), raw_data.get("message")])) if isinstance(raw_data, dict) else str(raw_data)
+        if detail and detail not in msg:
+            msg = f"{msg}: {detail}"
+
+    return msg
 
 
 class HiveClient:
-    """Async JSON-RPC client for reading the Hive blockchain, with automatic node failover."""
+    """Async Hive JSON-RPC client with automatic node failover."""
 
     def __init__(self, nodes: Optional[List[str]] = None):
         self.nodes = nodes or HIVE_NODES.copy()
         self._session: Optional[aiohttp.ClientSession] = None
-        self._current_node = 0
+        self._node_idx = 0
 
     async def __aenter__(self):
         self._session = aiohttp.ClientSession(
@@ -46,44 +70,36 @@ class HiveClient:
         )
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, *_):
         if self._session:
             await self._session.close()
 
-    async def rpc_call(self, method: str, params: list = None) -> dict:
-        """Make an RPC call, rotating through nodes on transient failures."""
-        if not self._session:
-            raise PodpingConnectionError(
-                "Client not initialized. Use 'async with HiveClient() as client:'."
-            )
+    def _next_node(self):
+        self._node_idx = (self._node_idx + 1) % len(self.nodes)
 
-        request = {
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params or [],
-            "id": 1,
-        }
-        last_error: Optional[Exception] = None
+    async def rpc_call(self, method: str, params: list = None) -> dict:
+        if not self._session:
+            raise PodpingConnectionError("Use 'async with HiveClient() as client:'.")
+
+        payload = {"jsonrpc": "2.0", "method": method, "params": params or [], "id": 1}
+        last_error = None
 
         for _ in range(len(self.nodes)):
-            node = self.nodes[self._current_node]
+            node = self.nodes[self._node_idx]
             try:
-                async with self._session.post(node, json=request) as resp:
+                async with self._session.post(node, json=payload) as resp:
                     data = await resp.json()
                     if "error" in data:
-                        raise PodpingNetworkError(
-                            data["error"].get("message", "Unknown RPC error")
-                        )
+                        self._next_node()
+                        raise PodpingNetworkError(_format_rpc_error(data["error"]))
                     return data["result"]
             except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as e:
                 last_error = e
                 logger.debug(f"Node {node} failed: {e}")
-                self._current_node = (self._current_node + 1) % len(self.nodes)
+                self._next_node()
                 await asyncio.sleep(0.1)
 
-        raise PodpingConnectionError(
-            f"All Hive nodes failed. Last error: {last_error}"
-        )
+        raise PodpingConnectionError(f"All nodes failed. Last error: {last_error}")
 
     async def get_dynamic_global_properties(self) -> dict:
         return await self.rpc_call("condenser_api.get_dynamic_global_properties")
@@ -93,41 +109,27 @@ class HiveClient:
 
 
 class HiveWriter:
-    """Synchronous lighthive wrapper, run in a thread pool for async callers."""
+    """Lighthive wrapper that exposes an async interface via a thread pool."""
 
-    def __init__(
-        self,
-        account: str,
-        posting_key: str,
-        nodes: Optional[List[str]] = None,
-    ):
+    def __init__(self, account: str, posting_key: str, nodes: Optional[List[str]] = None):
         self.account = account
         self.nodes = nodes or HIVE_NODES.copy()
-        self._client = Client(
-            keys=[posting_key],
-            nodes=self.nodes,
-            connect_timeout=10.0,
-            read_timeout=30.0,
-        )
+        self._client = Client(keys=[posting_key], nodes=self.nodes, connect_timeout=10.0, read_timeout=30.0)
+
+    async def _run(self, fn, *args):
+        return await asyncio.get_running_loop().run_in_executor(None, fn, *args)
 
     async def broadcast_operation(self, operation: Operation) -> dict:
         try:
-            loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(
-                None, self._client.broadcast_sync, [operation]
-            )
+            return await self._run(self._client.broadcast_sync, [operation])
         except Exception as e:
-            raise PodpingNetworkError(f"Failed to broadcast: {e}") from e
+            raise PodpingNetworkError(f"Failed to broadcast: {_format_rpc_error(e)}") from e
 
     async def get_account_rc(self) -> float:
-        """Return account Resource Credits as a percentage (0.0–100.0)."""
+        """Return account Resource Credits as a percentage (0–100)."""
         try:
-            loop = asyncio.get_running_loop()
-            account = await loop.run_in_executor(
-                None, Account, self._client, self.account
-            )
-            rc = await loop.run_in_executor(None, account.rc)
-            return rc if rc is not None else 0.0
+            account = await self._run(Account, self._client, self.account)
+            return await self._run(account.rc) or 0.0
         except Exception as e:
             logger.debug(f"Failed to get RC: {e}")
             return 0.0

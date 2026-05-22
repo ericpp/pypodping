@@ -129,6 +129,7 @@ class HiveWriter:
         try:
             return await self._run(self._client.broadcast_sync, [operation])
         except Exception as e:
+            self._client.next_node()
             raise PodpingNetworkError(f"Failed to broadcast: {_format_rpc_error(e)}") from e
 
     async def get_account_rc(self) -> float:
@@ -138,4 +139,5 @@ class HiveWriter:
             return await self._run(account.rc) or 0.0
         except Exception as e:
             logger.debug(f"Failed to get RC: {e}")
+            self._client.next_node()
             return 0.0

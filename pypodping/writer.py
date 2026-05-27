@@ -40,7 +40,7 @@ class PodpingWriter:
     ) -> dict:
         """Post update notification for one or more feed URLs.
 
-        Returns ``{"tx_id": "...", "block_num": 12345}``.
+        Returns ``{"tx_id": "..."}``.
         """
         url_list = [urls] if isinstance(urls, str) else list(urls)
         for url in url_list:
@@ -49,7 +49,7 @@ class PodpingWriter:
 
         if self.dry_run:
             logger.info(f"DRY RUN - Would post notification for {len(url_list)} URLs")
-            return {"tx_id": "dry_run", "block_num": 0}
+            return {"tx_id": "dry_run"}
 
         # Build notification payload
         payload = {
@@ -82,7 +82,6 @@ class PodpingWriter:
             logger.info(f"Posted notification for {len(url_list)} URLs: {response['id']}")
             return {
                 "tx_id": response["id"],
-                "block_num": response["block_num"],
             }
         except Exception as e:
             raise PodpingError(f"Failed to post notification: {e}") from e

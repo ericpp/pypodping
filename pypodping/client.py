@@ -126,7 +126,7 @@ class HiveWriter:
 
     async def broadcast_operation(self, operation: Operation) -> dict:
         try:
-            return await self._run(self._client.broadcast_sync, [operation])
+            return await self._run(self._client.broadcast, [operation])
         except Exception as e:
             self._client.next_node()
             raise PodpingNetworkError(f"Failed to broadcast: {_format_rpc_error(e)}") from e

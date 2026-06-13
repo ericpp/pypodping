@@ -8,10 +8,13 @@ from datetime import datetime
 from typing import Callable, List, Optional
 
 from .client import HiveClient
-from .errors import PodpingError
+from .errors import PodpingConnectionError, PodpingError, PodpingNetworkError
 from .types import PodpingData
 
 logger = logging.getLogger(__name__)
+
+_RETRYABLE_ERRORS = (PodpingConnectionError, PodpingNetworkError)
+_OP_REGEX = re.compile(r"^pp_(.*)_(.*)|podping$")
 
 
 class PodpingWatcher:
@@ -21,8 +24,8 @@ class PodpingWatcher:
         self.nodes = nodes
         self.running = False
         self.total_updates = 0
+        self.current_block = None
         self._callback: Optional[Callable] = None
-        self._operation_regex = re.compile(r"^pp_(.*)_(.*)|podping$")
 
     def on_update(self, callback: Callable) -> Callable:
         """Decorator to register a callback that receives :class:`PodpingData`."""
@@ -38,22 +41,9 @@ class PodpingWatcher:
 
         async with HiveClient(self.nodes) as client:
             try:
-                # Determine starting block
-                props = await client.get_dynamic_global_properties()
-                current_block = props["head_block_number"]
-
                 while self.running:
-                    props = await client.get_dynamic_global_properties()
-                    head_block = props["head_block_number"]
-
-                    # Process all available blocks
-                    while current_block <= head_block and self.running:
-                        updates = await self._process_block(client, current_block)
-                        self.total_updates += updates
-                        current_block += 1
-
+                    await self._process_blocks(client)
                     await asyncio.sleep(3)
-
             finally:
                 self.running = False
 
@@ -61,13 +51,40 @@ class PodpingWatcher:
         """Stop the watcher."""
         self.running = False
 
-    async def _process_block(self, client: HiveClient, block_num: int) -> int:
+    async def _process_blocks(self, client: HiveClient) -> None:
+        head_block = await self._head_block(client)
+        if head_block is None:
+            return
+
+        self.current_block = self.current_block or head_block
+
+        while self.current_block <= head_block and self.running:
+            block = await self._get_block(client, self.current_block)
+            if block is None:
+                return
+
+            updates = await self._process_block(block, self.current_block)
+            self.total_updates += updates
+            self.current_block += 1
+
+    async def _head_block(self, client: HiveClient) -> Optional[int]:
+        try:
+            props = await client.get_dynamic_global_properties()
+            return props["head_block_number"]
+        except _RETRYABLE_ERRORS as e:
+            logger.warning("Failed to get head block: %s", e)
+            return None
+
+    async def _get_block(self, client: HiveClient, block_num: int) -> Optional[dict]:
+        try:
+            return await client.get_block(block_num)
+        except _RETRYABLE_ERRORS as e:
+            logger.warning("Failed to get block %s: %s", block_num, e)
+            return None
+
+    async def _process_block(self, block: dict, block_num: int) -> int:
         """Process a block and return number of updates found."""
         try:
-            block = await client.get_block(block_num)
-            if not block:
-                return 0
-
             updates = 0
             timestamp = datetime.fromisoformat(block["timestamp"].replace("Z", "+00:00"))
             tx_ids = block.get("transaction_ids", [])
@@ -77,7 +94,7 @@ class PodpingWatcher:
                     if op_type != "custom_json":
                         continue
 
-                    if not self._operation_regex.match(op_data.get("id", "")):
+                    if not _OP_REGEX.match(op_data.get("id", "")):
                         continue
 
                     try:

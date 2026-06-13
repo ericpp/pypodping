@@ -117,7 +117,11 @@ Passed to the watcher callback. Can be iterated directly (`for url in data`).
 
 ## Error Handling
 
-All errors inherit from `PodpingError`:
+All errors inherit from `PodpingError`.
+
+`PodpingWatcher` retries `PodpingConnectionError` and `PodpingNetworkError` internally (logs a warning, waits 3 seconds, and retries the same block). `start()` runs until `stop()` is called; you do not need a try/except around `watcher.start()` for transient network blips.
+
+For `PodpingWriter`, handle errors at the call site:
 
 ```python
 from pypodping import PodpingError, PodpingConnectionError, PodpingValidationError

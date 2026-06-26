@@ -58,11 +58,12 @@ class PodpingWatcher:
                 return
 
             if self.current_block is None:
+                logger.info("Starting from block %s", head_block)
                 self.current_block = head_block
 
-            logger.info("Processing blocks from %s", self.current_block)
-
             while self.current_block <= head_block and self.running:
+                logger.debug("Processing block  %s", self.current_block)
+
                 block = await self._get_block(client, self.current_block)
                 if block is None:
                     return

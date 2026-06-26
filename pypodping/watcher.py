@@ -24,7 +24,7 @@ class PodpingWatcher:
         self.nodes = nodes
         self.running = False
         self.total_updates = 0
-        self.current_block = None
+        self.current_block: Optional[int] = None
         self._callback: Optional[Callable] = None
 
     def on_update(self, callback: Callable) -> Callable:
@@ -52,20 +52,26 @@ class PodpingWatcher:
         self.running = False
 
     async def _process_blocks(self, client: HiveClient) -> None:
-        head_block = await self._head_block(client)
-        if head_block is None:
-            return
-
-        self.current_block = self.current_block or head_block
-
-        while self.current_block <= head_block and self.running:
-            block = await self._get_block(client, self.current_block)
-            if block is None:
+        try:
+            head_block = await self._head_block(client)
+            if head_block is None:
                 return
 
-            updates = await self._process_block(block, self.current_block)
-            self.total_updates += updates
-            self.current_block += 1
+            if self.current_block is None:
+                self.current_block = head_block
+
+            logger.info("Processing blocks from %s", self.current_block)
+
+            while self.current_block <= head_block and self.running:
+                block = await self._get_block(client, self.current_block)
+                if block is None:
+                    return
+
+                updates = await self._process_block(block, self.current_block)
+                self.total_updates += updates
+                self.current_block += 1
+        except Exception as e:
+            logger.error("Error processing blocks: %s", e, exc_info=True)
 
     async def _head_block(self, client: HiveClient) -> Optional[int]:
         try:

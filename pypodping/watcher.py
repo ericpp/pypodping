@@ -80,10 +80,16 @@ class PodpingWatcher:
         except _RETRYABLE_ERRORS as e:
             logger.warning("Failed to get head block: %s", e)
             return None
+        except (KeyError, TypeError) as e:
+            logger.error("Malformed head block response: %s", e)
+            return None
 
     async def _get_block(self, client: HiveClient, block_num: int) -> Optional[dict]:
         try:
-            return await client.get_block(block_num)
+            block = await client.get_block(block_num)
+            if block is None:
+                logger.warning("get_block %s returned null", block_num)
+            return block
         except _RETRYABLE_ERRORS as e:
             logger.warning("Failed to get block %s: %s", block_num, e)
             return None
